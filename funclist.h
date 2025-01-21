@@ -3,6 +3,7 @@
 
 #include <functional>
 #include <sstream>
+#include <ranges>
 #include <string>
 
 namespace flist {
@@ -105,20 +106,8 @@ const auto concat = [](auto l, auto k) {
 
 const auto of_range = [](auto r) { 
     return [r](auto f, auto a) {
-        auto&& container = [&]() -> decltype(auto) {
-            if constexpr (std::is_same_v<
-                              std::remove_cvref_t<decltype(r)>,
-                              std::reference_wrapper<
-                                  std::ranges::range_value_t<decltype(r)>>>) {
-                return r.get();
-            }
-            else {
-                return r;
-            }
-        }();
-
-        for (auto it = std::ranges::begin(container);
-             it != std::ranges::end(container); ++it) {
+        for (auto it = std::ranges::begin(r);
+             it != std::ranges::end(r); ++it) {
             a = f(*it, a);
         }
         return a;
