@@ -1,84 +1,29 @@
 #ifndef FUNCLIST_H
 #define FUNCLIST_H
 
+#include <algorithm>
 #include <functional>
-#include <sstream>
 #include <ranges>
+#include <sstream>
 #include <string>
 
 namespace flist {
 
-namespace detail {
+namespace detail {}  // namespace detail
 
-template <typename F, typename A>
-using L = std::function<A(F, A)>;
-
-// const auto of_range_creator = []<>(this const auto& self, T t,
-//                                                Args... args) {
-//     if constexpr (sizeof...(args) != 0) {
-//         return cons(t, self(args...));
-//     }
-//     else {
-//         return cons(t, empty);
-//     }
-// };
-
-}  // namespace detail
-
+// Lambda returning an empty list.
 const auto empty = []([[maybe_unused]] auto f, auto a) {
     return a;
 };
 
+// Lambda returning a list with x appended to l.
 const auto cons = [](auto x, auto l) {
     return [x, l](auto f, auto a) {
         return f(x, l(f, a));
     };
 };
 
-// TODO upiększyć
-const auto rev = [](auto l) {
-    return [l](auto f, auto a) {
-        using A = decltype(a);
-        using ACC = std::function<A(A)>;
-
-        ACC acc = [](A aa) {
-            return aa;
-        };
-
-        auto func = [f](auto x, auto acc) -> ACC {
-            return [f, x, acc](auto aa) {
-                return acc(f(x, aa));
-            };
-        };
-
-        return l(func, acc)(a);
-    };
-};
-
-const auto as_string = [](const auto& l) -> std::string {
-    // auto acc = [](auto x, std::reference_wrapper<std::ostringstream> os)
-    //     -> std::reference_wrapper<std::ostringstream> {
-    //     os.get() << x << ";";
-    //     return os;
-    // };
-
-    auto acc = [](auto x, auto os) {
-        os.get() << x << ";";
-        return os;
-    };
-
-    std::ostringstream oss;
-    oss << "[";
-
-    auto result = rev(l)(acc, std::ref(oss)).get().str();
-
-    if (result.size() != 1) {
-        result.pop_back();
-    }
-
-    return result += "]";
-};
-
+// Lambda recursively creating a list from arguments.
 const auto create = []<typename T, typename... Args>(this const auto& self, T t,
                                                      Args... args) {
     if constexpr (sizeof...(args) != 0) {
@@ -89,60 +34,63 @@ const auto create = []<typename T, typename... Args>(this const auto& self, T t,
     }
 };
 
+// Lambda returning a list from a range.
+const auto of_range = []<typename Con>(Con r) {
+    return [r](auto f, auto a) {
+        auto reference = std::cref(r);
+
+        auto begin = std::ranges::begin(reference.get());
+        auto end = std::ranges::end(reference.get());
+
+        return std::ranges::fold_right(begin, end, a, f);
+    };
+};
+
+// Lambda returning a list that is a concatenation of l and k.
 const auto concat = [](auto l, auto k) {
     return [l, k](auto f, auto a) {
         return l(f, k(f, a));
     };
 };
 
-// const auto of_range_creator = [](this const auto& self, auto it, auto end,
-//                                  auto l) {
-//     auto it_new = ++it;
-//     if constexpr (it_new == end) {
-//         return l;
-//     }
-//     return self(it_new, end, cons(*(it_new), l));
-// };
+// Lambda returning a list that is a reverse of l.
+const auto rev = [](auto l) {
+    return [l](auto f, auto a) {
+        using A = decltype(a);
+        using ACC = std::function<A(A)>;
 
-const auto of_range = [](auto r) { 
-    return [r](auto f, auto a) {
-        for (auto it = std::ranges::begin(r);
-             it != std::ranges::end(r); ++it) {
-            a = f(*it, a);
-        }
-        return a;
+        // We are constructing function(A) -> A st. evaluated on 'a' will
+        // calculate evaluation of 'f' on list 'l', but from the back.
+
+        // Initial accumulator function.
+        ACC accumulator = [](A acc) {
+            return acc;
+        };
+
+        // Function 'f' but insted of returning a value it updates 'accumulator'
+        auto create_accumulator = [f](auto x, auto acc) -> ACC {
+            return [f, x, acc](auto acc_value) {
+                return acc(f(x, acc_value));
+            };
+        };
+
+        // l(create_accumulator, accumulator) will return a function that
+        // evaluated on 'a' will return the result of 'f' evaluated on 'l' from
+        // the back.
+        return l(create_accumulator, accumulator)(a);
     };
-    // return [r](auto f, auto a) {
-    //     for (auto it = r.begin(); it != r.end(); it++) {
-    //         a = f(*it, a);
-    //     }
-    //     return a;
-    // };
 };
 
-// auto of_range(auto r) {
-//     auto create_from_range = [](this const auto& self, auto begin, auto end)
-//     {
-//         if (begin == end) {
-//             return empty;
-//         }
-//         auto prev = end;
-//         --prev;
-//         return cons(*prev, self(begin, prev));
-//     };
-
-//     return create_from_range(std::ranges::begin(r), std::ranges::end(r));
-// }
-
 const auto map = [](auto m, auto l) {
-    auto get_new_f = [m](auto old_f) {
-        return [m, old_f](auto x, auto a) {
-            return old_f(m(x), a);
+    // Lambda returning a composition of 'm' and 'f'.
+    auto get_mapped_f = [m](auto f) {
+        return [m, f](auto x, auto a) {
+            return f(m(x), a);
         };
     };
 
-    return [get_new_f, l](auto f, auto a) {
-        return l(get_new_f(f), a);
+    return [get_mapped_f, l](auto f, auto a) {
+        return l(get_mapped_f(f), a);
     };
 };
 
@@ -158,6 +106,27 @@ const auto filter = [](auto p, auto l) {
 
 const auto flatten = [](auto l) {
     return l(concat, empty);
+};
+
+const auto as_string = [](const auto& l) -> std::string {
+    // Accumulator lambda.
+    auto acc = [](auto x, auto os) {
+        os.get() << x << ";";
+        return os;
+    };
+
+    std::ostringstream oss;
+    oss << "[";
+
+    // Append all list elements to the accumulator. And then get the string.
+    auto result = rev(l)(acc, std::ref(oss)).get().str();
+
+    // Remove the last semicolon.
+    if (result.size() != 1) {
+        result.pop_back();
+    }
+
+    return result += "]";
 };
 
 }  // namespace flist

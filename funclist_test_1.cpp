@@ -43,6 +43,9 @@ int main() {
     // OFRANGE
     auto l5 = flist::concat(flist::of_range(std::array{3, 5, 7}),
     std::ref(l1));
+
+    cout << flist::as_string(l5) << endl;
+
     assert(flist::as_string(l5) == "[3;5;7;1;2.5]");
     assert(l5(add, 0.0) == 18.5);
     auto l6 = flist::rev(std::ref(l5));
