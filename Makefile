@@ -12,7 +12,7 @@ test: funclist_test_1.cpp funclist.h
 test_clear: funclist_test_clear.cpp funclist.h
 	$(CXX) $(CXXFLAGS) funclist_test_clear.cpp -o test_clear
 
-run: test test2
+run: test test_clear
 	./test
 	./test_clear
 
