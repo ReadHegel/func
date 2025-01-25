@@ -9,7 +9,19 @@
 
 namespace flist {
 
-namespace detail {}  // namespace detail
+namespace detail {
+
+using str_stream_ref = std::reference_wrapper<std::ostringstream>;
+
+// Helper lambda for appending a value to a stream with a semicolon 
+// in as_string function.
+const auto stream_append_with_semicolon =
+    [](auto x, str_stream_ref os) -> str_stream_ref {
+    os.get() << x << ";";
+    return os;
+};
+
+}  // namespace detail
 
 // Lambda returning an empty list.
 const auto empty = []([[maybe_unused]] auto f, auto a) {
@@ -35,14 +47,19 @@ const auto create = []<typename T, typename... Args>(this const auto& self, T t,
 };
 
 // Lambda returning a list from a range.
-const auto of_range = []<typename Con>(Con r) {
+const auto of_range = [](auto r) {
     return [r](auto f, auto a) {
-        auto reference = std::cref(r);
+        const auto reference = std::cref(r);
 
-        auto begin = std::ranges::begin(reference.get());
-        auto end = std::ranges::end(reference.get());
+        // Reverse iterator range.
+        const auto rbegin = std::ranges::rbegin(reference.get());
+        const auto rend = std::ranges::rend(reference.get());
 
-        return std::ranges::fold_right(begin, end, a, f);
+        std::for_each(rbegin, rend, [f, &a](const auto& x) {
+            a = f(x, a);
+        });
+
+        return a;
     };
 };
 
@@ -63,12 +80,12 @@ const auto rev = [](auto l) {
         // calculate evaluation of 'f' on list 'l', but from the back.
 
         // Initial accumulator function.
-        ACC accumulator = [](A acc) {
+        const ACC accumulator = [](A acc) {
             return acc;
         };
 
         // Function 'f' but insted of returning a value it updates 'accumulator'
-        auto create_accumulator = [f](auto x, auto acc) -> ACC {
+        const auto create_accumulator = [f](auto x, auto acc) -> ACC {
             return [f, x, acc](auto acc_value) {
                 return acc(f(x, acc_value));
             };
@@ -82,21 +99,18 @@ const auto rev = [](auto l) {
 };
 
 const auto map = [](auto m, auto l) {
-    // Lambda returning a composition of 'm' and 'f'.
-    auto get_mapped_f = [m](auto f) {
-        return [m, f](auto x, auto a) {
+    return [m, l](auto f, auto a) {
+        const auto mapped_f = [m, f](auto x, auto a) {
             return f(m(x), a);
         };
-    };
 
-    return [get_mapped_f, l](auto f, auto a) {
-        return l(get_mapped_f(f), a);
+        return l(mapped_f, a);
     };
 };
 
 const auto filter = [](auto p, auto l) {
     return [l, p](auto f, auto a) {
-        auto filtered_f = [p, f](auto x, auto acc) {
+        const auto filtered_f = [p, f](auto x, auto acc) {
             return p(x) ? f(x, acc) : acc;
         };
 
@@ -109,24 +123,18 @@ const auto flatten = [](auto l) {
 };
 
 const auto as_string = [](const auto& l) -> std::string {
-    // Accumulator lambda.
-    auto acc = [](auto x, auto os) {
-        os.get() << x << ";";
-        return os;
-    };
-
-    std::ostringstream oss;
-    oss << "[";
+    std::ostringstream acc;
 
     // Append all list elements to the accumulator. And then get the string.
-    auto result = rev(l)(acc, std::ref(oss)).get().str();
+    std::string result =
+        rev(l)(detail::stream_append_with_semicolon, std::ref(acc)).get().str();
 
     // Remove the last semicolon.
-    if (result.size() != 1) {
+    if (!result.empty()) {
         result.pop_back();
     }
 
-    return result += "]";
+    return "[" + result + "]";
 };
 
 }  // namespace flist
