@@ -11,15 +11,15 @@ namespace flist {
 
 namespace detail {
 
-using str_stream_ref = std::reference_wrapper<std::ostringstream>;
+    using str_stream_ref = std::reference_wrapper<std::ostringstream>;
 
-// Helper lambda for appending a value to a stream with a semicolon 
-// in as_string function.
-const auto stream_append_with_semicolon =
-    [](auto x, str_stream_ref os) -> str_stream_ref {
-    os.get() << x << ";";
-    return os;
-};
+    // Helper lambda for appending a value to a stream with a semicolon
+    // in as_string function.
+    const auto stream_append_with_semicolon =
+        [](auto x, str_stream_ref os) -> str_stream_ref {
+        os.get() << x << ";";
+        return os;
+    };
 
 }  // namespace detail
 
@@ -35,18 +35,17 @@ const auto cons = [](auto x, auto l) {
     };
 };
 
-
 // // Lambda recursively creating a list from arguments.
 const auto create = []<typename... Args>(this const auto& self, Args... args) {
     if constexpr (sizeof...(args) == 0) {
         return empty;
-    } else {
+    }
+    else {
         return [self]<typename T, typename... Rest>(T t, Rest... rest) {
             return cons(t, self(rest...));
         }(args...);
     }
 };
-
 
 // Lambda returning a list from a range.
 const auto of_range = [](auto r) {
@@ -57,11 +56,15 @@ const auto of_range = [](auto r) {
         const auto rbegin = std::ranges::rbegin(reference.get());
         const auto rend = std::ranges::rend(reference.get());
 
-        std::for_each(rbegin, rend, [f, &a](const auto& x) {
-            a = f(x, a);
-        });
+        using A = decltype(a);
 
-        return a;
+        // Recursive lambda just evaluating f on list elements.
+        const auto call_recursive = [](this const auto& self, auto beg,
+                                       auto end, auto f, auto a) -> A {
+            return (beg == end) ? a : self(std::next(beg), end, f, f(*beg, a));
+        };
+
+        return call_recursive(rbegin, rend, f, a);
     };
 };
 
