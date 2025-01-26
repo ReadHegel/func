@@ -35,16 +35,18 @@ const auto cons = [](auto x, auto l) {
     };
 };
 
-// Lambda recursively creating a list from arguments.
-const auto create = []<typename T, typename... Args>(this const auto& self, T t,
-                                                     Args... args) {
-    if constexpr (sizeof...(args) != 0) {
-        return cons(t, self(args...));
-    }
-    else {
-        return cons(t, empty);
+
+// // Lambda recursively creating a list from arguments.
+const auto create = []<typename... Args>(this const auto& self, Args... args) {
+    if constexpr (sizeof...(args) == 0) {
+        return empty;
+    } else {
+        return [self]<typename T, typename... Rest>(T t, Rest... rest) {
+            return cons(t, self(rest...));
+        }(args...);
     }
 };
+
 
 // Lambda returning a list from a range.
 const auto of_range = [](auto r) {
